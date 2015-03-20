@@ -75,12 +75,9 @@ local type_handlers = {
 	},
 
 	["str"] = { read = net.ReadString, write = net.WriteString },
-	["ply"] = {
-		read = function()
-			return player.GetByUniqueID(tostring(net.ReadUInt(32)))
-		end,
-		write = function(ply) net.WriteUInt(IsValid(ply) and ply:UniqueID() or 0, 32) end
-	},
+
+	["ply"] = { read = net.ReadEntity, write = net.WriteEntity },
+	["ent"] = { read = net.ReadEntity, write = net.WriteEntity },
 }
 
 function nettableproto.compile(str)

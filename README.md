@@ -32,7 +32,8 @@ f32         | A float
 f64         | A double
 []          | An array
 {}          | A subtable
-ply         | A GMod Player object
+ply         | A GMod Player
+ent         | A GMod Entity
 
 ### Subtable/array examples
 
