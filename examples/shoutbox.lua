@@ -1,4 +1,4 @@
-local t = nettable.get("shoutbox", _, {proto = "[{str:msg ply:ply}]:msgs"})
+local t = nettable.get("shoutbox", {proto = "[{str:msg ply:ply}]:msgs"})
 if SERVER then
 	concommand.Add("shout", function(ply, _, _, raw)
 		t.msgs = t.msgs or {}

@@ -1,4 +1,4 @@
-local t = nettable.get("pings", _, {proto = "f32:time ply:user"})
+local t = nettable.get("pings", {proto = "f32:time ply:user"})
 
 if SERVER then
 	concommand.Add("svping", function(ply)

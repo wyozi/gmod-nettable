@@ -200,10 +200,8 @@ function nettable.hash(id)
 	return tonumber(util.CRC(id))
 end
 
-function nettable.get(id, flags, opts)
+function nettable.get(id, opts)
 	if type(id) == "string" then id = nettable.hash(id) end
-
-	flags = flags or 0
 
 	local tbl_existed = true
 
@@ -224,7 +222,6 @@ function nettable.get(id, flags, opts)
 	end
 
 	meta.id = id
-	meta.flags = flags
 
 	if opts and opts.proto then
 		local compiled = nettableproto.compile(opts.proto)
