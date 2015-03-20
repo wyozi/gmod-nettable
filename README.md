@@ -9,7 +9,7 @@ Somewhat efficient but painless table networking for Garry's Mod.
 - No table depth limits
 
 ## Usage
-See ![examples](tree/master/examples).
+See ![examples](examples/).
 
 ## Protocol strings
 Protocol strings are a way of specifying what datatypes are sent and in which order. This allows sending only the data instead of numerous headers, type ids and other bloat.
