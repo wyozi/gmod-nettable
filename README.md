@@ -30,8 +30,9 @@ i8/i16/i32  | 8/16/32 bit signed integer
 str         | A string
 f32         | A float
 f64         | A double
-[]          | An array (see TODO for an example)
-{}          | A subtable (see TODO for an example)
+[]          | An array
+{}          | A subtable
+ply         | A GMod Player object
 
 ### Subtable/array examples
 
