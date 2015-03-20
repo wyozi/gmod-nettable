@@ -4,9 +4,12 @@ Somewhat efficient but painless table networking for Garry's Mod.
 
 ## Features
 - ```net.WriteTable``` used by default, but specifying a protocol string to massively reduce payload size is first class supported
-- [client] on-demand data requesting (data won't be sent until it is actually needed/requested)
-- Only sends changed data
+- on-demand data requesting (no need to mess with _PlayerInitSpawn_ hook, data is sent automatically when client first requests it)
+- Only sends changed data (using a table delta algorithm)
 - No table depth limits
+
+## Usage
+See ![examples](tree/master/examples).
 
 ## Protocol strings
 Protocol strings are a way of specifying what datatypes are sent and in which order. This allows sending only the data instead of numerous headers, type ids and other bloat.
