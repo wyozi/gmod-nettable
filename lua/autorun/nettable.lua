@@ -193,12 +193,33 @@ function nettable.debug(...)
 	print("[NetTable-D] ", ...)
 end
 
-function nettable.hash(id)
-	return tonumber(util.CRC(id))
-end
+-- Nettable ids are always strings, but sending them over and over again over network is expensive.
+-- This function can be used to convert the string id into eg. a CRC hash
+-- Needs to be same on both client and server
+nettable.id_hasher = {
+	hash = function(id)
+		return id
+	end,
+	read = net.ReadString,
+	write = net.WriteString,
+}
+-- Example CRC implementation
+--[[
+nettable.id_hasher = {
+	hash = function(id)
+		return tonumber(util.CRC(id))
+	end,
+	read = function() return net.ReadUInt(64) end,
+	write = function(id) net.WriteUInt(id, 64) end,
+}
+]]
 
 function nettable.get(id, opts)
-	if type(id) == "string" then id = nettable.hash(id) end
+	local origId = id
+
+	if not opts or not opts.idHashed then
+		id = nettable.id_hasher.hash(id)
+	end
 
 	local tbl_existed = true
 
@@ -219,6 +240,7 @@ function nettable.get(id, opts)
 	end
 
 	meta.id = id
+	meta.origId = origId
 
 	if opts and opts.proto then
 		local compiled = nettableproto.compile(opts.proto)
@@ -228,7 +250,7 @@ function nettable.get(id, opts)
 	if CLIENT then
 		-- If didn't exist, request a full update from server
 		if not tbl_existed then
-			net.Start("nettable_fullupdate") net.WriteUInt(id, 32) net.SendToServer()
+			net.Start("nettable_fullupdate") nettable.id_hasher.write(id) net.SendToServer()
 		end
 	end
 
@@ -297,7 +319,7 @@ end
 function nettable.commit(id)
 	local tbl, meta
 	if type(id) == "string" then
-		id = nettable.hash(id)
+		id = nettable.id_hasher.hash(id)
 
 		tbl = nettable.__tables[id]
 		meta = nettable.__tablemeta[tbl]
@@ -362,7 +384,7 @@ function nettable.commit(id)
 	nettable.debug("Sending delta tables {mod=", table.ToString(modified), ", del=", table.ToString(deleted), "}")
 
 	net.Start("nettable_commit")
-		net.WriteUInt(id, 32)
+		nettable.id_hasher.write(id)
 		NetWrite()
 	net.Broadcast()
 
@@ -374,7 +396,7 @@ if SERVER then
 	util.AddNetworkString("nettable_fullupdate")
 
 	net.Receive("nettable_fullupdate", function(len, cl)
-		local id = net.ReadUInt(32)
+		local id = nettable.id_hasher.read()
 		local tbl = nettable.__tables[id]
 		if not tbl then
 			nettable.warn("User ", cl, " attempted to request inexistent nettable ", id)
@@ -384,7 +406,7 @@ if SERVER then
 		local modified, deleted = nettable.computeTableDelta({}, tbl)
 
 		net.Start("nettable_commit")
-			net.WriteUInt(id, 32)
+			nettable.id_hasher.write(id)
 			net.WriteBool(false)
 			net.WriteTable(modified)
 			net.WriteTable(deleted)
@@ -393,7 +415,7 @@ if SERVER then
 end
 if CLIENT then
 	net.Receive("nettable_commit", function(len, cl)
-		local id = net.ReadUInt(32)
+		local id = nettable.id_hasher.read()
 		nettable.debug("Received commit for '" .. id .. "' (size " .. len .. ")")
 
 		local tbl = nettable.get(id)
