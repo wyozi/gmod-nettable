@@ -203,11 +203,20 @@ end
 -- This function can be used to convert the string id into eg. a CRC hash
 -- Needs to be same on both client and server
 nettable.id_hasher = {
+	init = function(id)
+		if SERVER then util.AddNetworkString(id) end
+	end,
 	hash = function(id)
 		return id
 	end,
-	read = net.ReadString,
-	write = net.WriteString,
+
+	read = function()
+		local netid = net.ReadInt(32)
+		return util.NetworkIDToString(netid)
+	end,
+	write = function(id)
+		net.WriteInt(util.NetworkStringToID(id), 32)
+	end,
 }
 -- Example CRC implementation
 --[[
@@ -222,6 +231,9 @@ nettable.id_hasher = {
 
 function nettable.get(id, opts)
 	local origId = id
+
+	local initfn = nettable.id_hasher.init
+	if initfn then initfn(origId) end
 
 	if not opts or not opts.idHashed then
 		id = nettable.id_hasher.hash(id)
