@@ -230,9 +230,13 @@ nettable.id_hasher = {
 		if elapsed >= 2 then
 			net.WriteBool(true)
 			net.WriteInt(util.NetworkStringToID(id), 32)
+
+			nettable.debug("Using stringid to write nettable id")
 		else
 			net.WriteBool(false)
 			net.WriteString(id)
+
+			nettable.debug("NOT Using stringid to write nettable id")
 		end
 	end,
 }
@@ -272,8 +276,10 @@ function nettable.get(id, opts)
 		nettable.__tablemeta[tbl] = meta
 	end
 
-	local initfn = nettable.id_hasher.init
-	if initfn then initfn(id, meta) end
+	if not tbl_existed then
+		local initfn = nettable.id_hasher.init
+		if initfn then initfn(id, meta) end
+	end
 
 	meta.id = id
 	meta.origId = origId
