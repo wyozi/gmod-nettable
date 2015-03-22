@@ -428,7 +428,7 @@ if SERVER then
 			net.WriteBool(false)
 			net.WriteTable(modified)
 			net.WriteTable(deleted)
-		net.Broadcast()
+		net.Send(cl)
 	end)
 end
 if CLIENT then
