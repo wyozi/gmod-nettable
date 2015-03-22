@@ -260,6 +260,10 @@ function nettable.get(id, opts)
 	meta.id = id
 	meta.origId = origId
 
+	if opts and opts.filter then
+		meta.filter = opts.filter
+	end
+
 	if opts and opts.proto then
 		local compiled = nettableproto.compile(opts.proto)
 		meta.proto = compiled
@@ -401,10 +405,28 @@ function nettable.commit(id)
 
 	nettable.debug("Sending delta tables {mod=", table.ToString(modified), ", del=", table.ToString(deleted), "}")
 
+	local targets
+	if meta.filter then
+		targets = {}
+		for _,p in pairs(player.GetAll()) do
+			if meta.filter(p, tbl) then
+				targets[#targets+1] = p
+			end
+		end
+	end
+
+	if targets then
+		nettable.debug("Nettable sending to filtered plys: ", table.ToString(targets))
+	end
+
 	net.Start("nettable_commit")
 		nettable.id_hasher.write(id)
 		NetWrite()
-	net.Broadcast()
+	if targets then
+		net.Send(targets)
+	else
+		net.Broadcast()
+	end
 
 	meta.lastSentTable = nettable.deepCopy(tbl)
 end
@@ -418,6 +440,12 @@ if SERVER then
 		local tbl = nettable.__tables[id]
 		if not tbl then
 			nettable.warn("User ", cl, " attempted to request inexistent nettable ", id)
+			return
+		end
+
+		local meta = nettable.__tablemeta[tbl]
+		if meta.filter and not meta.filter(cl, tbl) then
+			nettable.warn("User ", cl, " attempted to request nettable he's filtered from")
 			return
 		end
 

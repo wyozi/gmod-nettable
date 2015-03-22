@@ -11,6 +11,14 @@ Somewhat efficient but painless table networking for Garry's Mod.
 ## Usage
 See ![examples](examples/).
 
+## Filters
+If specific nettable's data should only be sent to some players, you can pass a filter function in ```opts``` to ```nettable.get```.
+```lua
+local secretTable = nettable.get("secret", {filter = function(ply) return ply:IsSuperAdmin() end})
+secretTable.password = "hunter2"
+nettable.commit("secret")
+```
+
 ## Protocol strings
 Protocol strings are a way of specifying what datatypes are sent and in which order. This allows sending only the data instead of numerous headers, type ids and other bloat.
 
