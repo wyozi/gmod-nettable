@@ -19,6 +19,8 @@ local type_handlers = {
 	["f32"] = { read = net.ReadFloat, write = net.WriteFloat },
 	["f64"] = { read = net.ReadDouble, write = net.WriteDouble },
 
+	["bool"] = { read = net.ReadBool, write = net.WriteBool },
+
 	["array"] = {
 		read = function(data)
 			local size = net.ReadUInt(16)
@@ -78,6 +80,10 @@ local type_handlers = {
 
 	["ply"] = { read = net.ReadEntity, write = net.WriteEntity },
 	["ent"] = { read = net.ReadEntity, write = net.WriteEntity },
+
+	["vec"] = { read = net.ReadVector, write = net.WriteVector },
+	["ang"] = { read = net.ReadAngle, write = net.WriteAngle },
+	["color"] = { read = net.ReadColor, write = net.WriteColor },
 }
 
 function nettableproto.compile(str)
