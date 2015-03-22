@@ -203,19 +203,37 @@ end
 -- This function can be used to convert the string id into eg. a CRC hash
 -- Needs to be same on both client and server
 nettable.id_hasher = {
-	init = function(id)
-		if SERVER then util.AddNetworkString(id) end
+	init = function(id, meta)
+		if SERVER then
+			util.AddNetworkString(id)
+			meta._IdStringtabled = CurTime()
+		end
 	end,
 	hash = function(id)
 		return id
 	end,
 
 	read = function()
-		local netid = net.ReadInt(32)
-		return util.NetworkIDToString(netid)
+		local is_stringtable = net.ReadBool()
+
+		if is_stringtable then
+			local netid = net.ReadInt(32)
+			return util.NetworkIDToString(netid)
+		else
+			return net.ReadString()
+		end
 	end,
-	write = function(id)
-		net.WriteInt(util.NetworkStringToID(id), 32)
+	write = function(id, meta)
+		-- Time elapsed since id was added to stringtables. Used to make sure clients have actually received the string table id
+		local elapsed = CurTime() - (meta._IdStringtabled or CurTime())
+
+		if elapsed >= 2 then
+			net.WriteBool(true)
+			net.WriteInt(util.NetworkStringToID(id), 32)
+		else
+			net.WriteBool(false)
+			net.WriteString(id)
+		end
 	end,
 }
 -- Example CRC implementation
@@ -231,9 +249,6 @@ nettable.id_hasher = {
 
 function nettable.get(id, opts)
 	local origId = id
-
-	local initfn = nettable.id_hasher.init
-	if initfn then initfn(origId) end
 
 	if not opts or not opts.idHashed then
 		id = nettable.id_hasher.hash(id)
@@ -257,6 +272,9 @@ function nettable.get(id, opts)
 		nettable.__tablemeta[tbl] = meta
 	end
 
+	local initfn = nettable.id_hasher.init
+	if initfn then initfn(id, meta) end
+
 	meta.id = id
 	meta.origId = origId
 
@@ -272,7 +290,7 @@ function nettable.get(id, opts)
 	if CLIENT then
 		-- If didn't exist, request a full update from server
 		if not tbl_existed then
-			net.Start("nettable_fullupdate") nettable.id_hasher.write(id) net.SendToServer()
+			net.Start("nettable_fullupdate") nettable.id_hasher.write(id, meta) net.SendToServer()
 		end
 	end
 
@@ -420,7 +438,7 @@ function nettable.commit(id)
 	end
 
 	net.Start("nettable_commit")
-		nettable.id_hasher.write(id)
+		nettable.id_hasher.write(id, meta)
 		NetWrite()
 	if targets then
 		net.Send(targets)
@@ -452,7 +470,7 @@ if SERVER then
 		local modified, deleted = nettable.computeTableDelta({}, tbl)
 
 		net.Start("nettable_commit")
-			nettable.id_hasher.write(id)
+			nettable.id_hasher.write(id, meta)
 			net.WriteBool(false)
 			net.WriteTable(modified)
 			net.WriteTable(deleted)
