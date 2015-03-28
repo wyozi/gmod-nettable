@@ -11,15 +11,16 @@ Somewhat efficient but painless table networking for Garry's Mod.
 
 ## Commented example
 ```lua
--- Creates a reference to 'shoutboxs' nettable on both CLIENT and SERVER. Nettables with same IDs are
---    connected over the network.
+-- Creates a reference to 'shoutboxs' nettable on both SERVER and CLIENT. Nettables
+--    with same IDs are connected on SERVER and CLIENT; in this case 'shoutboxs'.
 -- 
--- 'proto' string is used to make nettable send binary data instead of slightly inefficient net.WriteTable
---    it is optional, so this example would work just as fine if the 'proto' string was removed
+-- 'proto' string is used to make nettable send binary data instead of slightly
+--    inefficient net.WriteTable it is optional, so this example would work just
+--    as fine if the 'proto' string was removed
 --
---    Note: this example stores shouts in 'msgs' subtable instead of the nettable itself,
---    because protocol strings do not currently support the whole nettable as an array.
---    If 'proto' was removed, you could store shouts directly in the nettable.
+--    Note: this example stores shouts in 'msgs' subtable instead of the nettable
+--    itself, because protocol strings do not currently support the whole nettable
+--    as an array. If 'proto' was removed, shouts could be stored directly in nettable.
 local t = nettable.get("shoutboxs", {proto = "[str]:msgs"})
 
 if SERVER then
@@ -34,7 +35,7 @@ if SERVER then
 end
 if CLIENT then
 	hook.Add("HUDPaint", "Test", function()
-		-- Again, nettable is a normal table so it (or its subtable) can be iterated normally
+		-- Again, nettable is a normal table so it can be iterated normally
 		for i,v in pairs(t.msgs or {}) do
 			draw.SimpleText(v, "DermaDefaultBold", 100, 100 + i*15)
 		end
