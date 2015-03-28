@@ -1,4 +1,4 @@
-nettableproto = {}
+nettableproto = nettableproto or {}
 
 local function curry(f)
 	return function (x) return function (y) return f(x,y) end end
@@ -9,7 +9,7 @@ end
 
 local lshift, rshift, arshift, band, bor, bxor = bit.lshift, bit.rshift, bit.arshift, bit.band, bit.bor, bit.bxor
 
-local type_handlers = {
+nettableproto.typeHandlers = {
 	["u8"] = { read = curry(net.ReadUInt)(8), write = curry_reverse(net.WriteUInt)(8) },
 	["u16"] = { read = curry(net.ReadUInt)(16), write = curry_reverse(net.WriteUInt)(16) },
 	["u32"] = { read = curry(net.ReadUInt)(32), write = curry_reverse(net.WriteUInt)(32) },
@@ -59,12 +59,12 @@ local type_handlers = {
 
 	["array"] = {
 		read = function(data)
-			local size = net.ReadUInt(16)
+			local size = nettableproto.typeHandlers.int.read()
 			nettable.debug("[Type:Array] Reading array of size ", size)
 
 			local arr = {}
 			for i=1,size do
-				local key = net.ReadInt(32)
+				local key = nettableproto.typeHandlers.int.read()
 				local val = data.type.handler.read(data.type.data)
 
 				nettable.debug("[Type:Table] Setting key ", key, " to value of type ", data.type.type)
@@ -75,10 +75,10 @@ local type_handlers = {
 			return arr
 		end,
 		write = function(arr, data)
-			net.WriteUInt(table.Count(arr), 16)
+			nettableproto.typeHandlers.int.write(table.Count(arr))
 
 			for k,v in pairs(arr) do
-				net.WriteInt(k, 32)
+				nettableproto.typeHandlers.int.write(k)
 				data.type.handler.write(v, data.type.data)
 			end
 		end,
@@ -126,7 +126,7 @@ function nettableproto.compile(str)
 	local fields = {}
 
 	local function addtype(typestr, data)
-		local handler = type_handlers[typestr]
+		local handler = nettableproto.typeHandlers[typestr]
 		if not handler then
 			error("No type handler for type '" .. typestr .. "'")
 			return
@@ -208,14 +208,12 @@ function nettableproto.compile(str)
 	return fields
 end
 
---[[
-{u16:duration str:title}:curmedia
-[{str:url ply:adder}]:mediaqueue
-]]
-
 nettable = nettable or {}
 nettable.__tables = nettable.__tables or {}
 nettable.__tablemeta = nettable.__tablemeta or {} -- note: stored by table reference instead of id
+
+nettable.__loaded = nettable.__loaded or false
+hook.Add("InitPostEntity", "NetTable_SetLoaded", function() nettable.__loaded = true end)
 
 local clr_white = Color(255, 255, 255)
 local clr_orange = Color(255, 127, 0)
@@ -226,7 +224,7 @@ function nettable.error(err)
 	error("[NetTable] " .. tostring(err or "Error"))
 end
 function nettable.warn(...)
-	MsgC(clr_orange, "[NetTable] ", clr_white, ...)
+	MsgC(clr_orange, "[NetTable-Warning] ", clr_white, ...)
 end
 
 local debug_cvar = CreateConVar("nettable_debug", "0", FCVAR_ARCHIVE)
@@ -253,7 +251,7 @@ nettable.id_hasher = {
 		local is_stringtable = net.ReadBool()
 
 		if is_stringtable then
-			local netid = net.ReadInt(32)
+			local netid = nettableproto.typeHandlers.int.read()
 			return util.NetworkIDToString(netid)
 		else
 			return net.ReadString()
@@ -265,7 +263,7 @@ nettable.id_hasher = {
 
 		if elapsed >= 2 then
 			net.WriteBool(true)
-			net.WriteInt(util.NetworkStringToID(id), 32)
+			nettableproto.typeHandlers.int.write(util.NetworkStringToID(id))
 
 			nettable.debug("Using stringid to write nettable id")
 		else
@@ -329,11 +327,19 @@ function nettable.get(id, opts)
 		meta.proto = compiled
 	end
 
-	if CLIENT then
-		-- If didn't exist, request a full update from server
-		if not tbl_existed then
+	-- If nettable didn't exist, request a full update from server
+	if CLIENT and not tbl_existed then
+		local function SendRequest()
 			net.Start("nettable_fullupdate") nettable.id_hasher.write(id, meta) net.SendToServer()
 		end
+
+		if nettable.__loaded then
+			SendRequest()
+		else
+			hook.Add("InitPostEntity", "NetTable_DeferredRequest:" .. id, SendRequest)
+		end
+
+		nettable.debug("Requesting a full update from server for '", id, "'")
 	end
 
 	return tbl
@@ -398,32 +404,11 @@ function nettable.deepCopy(tbl)
 	return copy
 end
 
-function nettable.commit(id)
-	local tbl, meta
-	if type(id) == "string" then
-		id = nettable.id_hasher.hash(id)
+if SERVER then
+	util.AddNetworkString("nettable_commit")
 
-		tbl = nettable.__tables[id]
-		meta = nettable.__tablemeta[tbl]
-	else
-		tbl = id
-		meta = nettable.__tablemeta[tbl]
-		id = meta.id
-	end
-
-	if not meta then
-		return nettable.error("Table '" .. tostring(tbl) .. "' does not have tablemeta. Make sure committed tables are created using nettable.get()")
-	end
-
-	local sent = meta.lastSentTable or {}
-	local modified, deleted = nettable.computeTableDelta(sent, tbl)
-
-	if table.Count(modified) == 0 and table.Count(deleted) == 0 then
-		nettable.debug("Not committing table; delta was empty")
-		return
-	end
-
-	local function NetWrite()
+	-- Helper function to write payload using net messages
+	function nettable.writeNet(id, meta, modified, deleted)
 		if meta.proto then
 			net.WriteBool(true)
 
@@ -449,11 +434,11 @@ function nettable.commit(id)
 
 				if is_deleted then
 					nettable.debug("Proto field '", name,  "' is deleted!")
-					deleted_bitfield = bit.bor(deleted_bitfield, bit.lshift(1, i))
+					deleted_bitfield = bor(deleted_bitfield, lshift(1, i))
 				end
 			end
 
-			net.WriteUInt(deleted_bitfield, 16)
+			nettableproto.typeHandlers.int.write(deleted_bitfield)
 
 			nettable.debug("Deleted bitfield: ", deleted_bitfield)
 		else
@@ -463,38 +448,60 @@ function nettable.commit(id)
 		end
 	end
 
-	nettable.debug("Sending delta tables {mod=", table.ToString(modified), ", del=", table.ToString(deleted), "}")
+	function nettable.commit(id)
+		local tbl, meta
+		if type(id) == "string" then
+			id = nettable.id_hasher.hash(id)
 
-	local targets
-	if meta.filter then
-		targets = {}
-		for _,p in pairs(player.GetAll()) do
-			if meta.filter(p, tbl) then
-				targets[#targets+1] = p
+			tbl = nettable.__tables[id]
+			meta = nettable.__tablemeta[tbl]
+		else
+			tbl = id
+			meta = nettable.__tablemeta[tbl]
+			id = meta.id
+		end
+
+		if not meta then
+			return nettable.error("Table '" .. tostring(tbl) .. "' does not have tablemeta. Make sure committed tables are created using nettable.get()")
+		end
+
+		local sent = meta.lastSentTable or {}
+		local modified, deleted = nettable.computeTableDelta(sent, tbl)
+
+		if table.Count(modified) == 0 and table.Count(deleted) == 0 then
+			nettable.debug("Not committing table; delta was empty")
+			return
+		end
+
+		nettable.debug("Sending delta tables {mod=", table.ToString(modified), ", del=", table.ToString(deleted), "}")
+
+		local targets
+		if meta.filter then
+			targets = {}
+			for _,p in pairs(player.GetAll()) do
+				if meta.filter(p, tbl) then
+					targets[#targets+1] = p
+				end
 			end
 		end
+
+		if targets then
+			nettable.debug("Nettable sending to filtered plys: ", table.ToString(targets))
+		end
+
+		net.Start("nettable_commit")
+			nettable.id_hasher.write(id, meta)
+			nettable.writeNet(id, meta, modified, deleted)
+		if targets then
+			net.Send(targets)
+		else
+			net.Broadcast()
+		end
+
+		meta.lastSentTable = nettable.deepCopy(tbl)
 	end
 
-	if targets then
-		nettable.debug("Nettable sending to filtered plys: ", table.ToString(targets))
-	end
-
-	net.Start("nettable_commit")
-		nettable.id_hasher.write(id, meta)
-		NetWrite()
-	if targets then
-		net.Send(targets)
-	else
-		net.Broadcast()
-	end
-
-	meta.lastSentTable = nettable.deepCopy(tbl)
-end
-
-if SERVER then
-	util.AddNetworkString("nettable_commit")
 	util.AddNetworkString("nettable_fullupdate")
-
 	net.Receive("nettable_fullupdate", function(len, cl)
 		local id = nettable.id_hasher.read()
 		local tbl = nettable.__tables[id]
@@ -511,11 +518,11 @@ if SERVER then
 
 		local modified, deleted = nettable.computeTableDelta({}, tbl)
 
+		nettable.debug("Sending full update to ", cl, " for '", id, "'")
+
 		net.Start("nettable_commit")
 			nettable.id_hasher.write(id, meta)
-			net.WriteBool(false)
-			net.WriteTable(modified)
-			net.WriteTable(deleted)
+			nettable.writeNet(id, meta, modified, deleted)
 		net.Send(cl)
 	end)
 end
@@ -550,12 +557,12 @@ if CLIENT then
 
 			nettable.debug("Proto mod table ", table.ToString(mod))
 
-			local deleted_bitfield = net.ReadUInt(16)
+			local deleted_bitfield = nettableproto.typeHandlers.int.read()
 			nettable.debug("Received proto del bitfield ", deleted_bitfield)
 
-			for i=1,16 do
-				local b = bit.lshift(1, i)
-				if bit.band(deleted_bitfield, b) == b then
+			for i=1,32 do
+				local b = lshift(1, i)
+				if band(deleted_bitfield, b) == b then
 					nettable.debug("Field #", b, " has been deleted")
 
 					local field = meta.proto[i]

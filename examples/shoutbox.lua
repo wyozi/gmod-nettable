@@ -6,6 +6,10 @@ if SERVER then
 		table.insert(t.msgs, {ply = ply, msg = raw})
 		nettable.commit(t)
 	end)
+	concommand.Add("clearshouts", function(ply, _, _, raw)
+		t.msgs = {}
+		nettable.commit(t)
+	end)
 end
 if CLIENT then
 	hook.Add("HUDPaint", "Test", function()
