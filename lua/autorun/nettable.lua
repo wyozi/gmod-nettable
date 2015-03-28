@@ -82,6 +82,30 @@ nettableproto.typeHandlers = {
 				data.type.handler.write(v, data.type.data)
 			end
 		end,
+
+		readDeletion = function(data)
+			local size = nettableproto.typeHandlers.int.read()
+			nettable.debug("[Type:Array-del] Reading keysArray of size ", size)
+
+			local del = {}
+			for i=1, size do
+				local key = nettableproto.typeHandlers.int.read()
+				del[key] = true
+			end
+			return del
+		end,
+		writeDeletion = function(del, data)
+			nettableproto.typeHandlers.int.write(table.Count(del))
+
+			for k,val in pairs(del) do
+				nettableproto.typeHandlers.int.write(k)
+				if val ~= true then
+					nettable.warn("[Type:Array-del] key ", k, " was not deleted as 'true'!!")
+				end
+			end
+
+			nettable.debug("[Type:Array-del] Writing keysArray of size ", table.Count(del))
+		end,
 	},
 	["table"] = {
 		read = function(data)
@@ -109,6 +133,32 @@ nettableproto.typeHandlers = {
 					field.handler.write(val, field.data)
 				end
 			end
+		end,
+
+		readDeletion = function(data)
+			local bitfield = nettableproto.typeHandlers.int.read()
+			nettable.debug("[Type:Table-del] Reading deletedBitfield ", bitfield)
+
+			local del = {}
+			for i=1, #data.fields do
+				local _bit = lshift(1, i)
+				if band(bitfield, _bit) == _bit then
+					del[data.fields[i].name] = true
+				end
+			end
+			return del
+		end,
+		writeDeletion = function(del, data)
+			local bitfield = 0
+
+			for i,field in ipairs(data.fields) do
+				if del[field.name] then
+					bitfield = bor(bitfield, lshift(1, i))
+				end
+			end
+
+			nettableproto.typeHandlers.int.write(bitfield)
+			nettable.debug("[Type:Table-del] Writing deletedBitfield ", bitfield)
 		end,
 	},
 
@@ -426,21 +476,36 @@ if SERVER then
 				end
 			end
 
+
 			local deleted_bitfield = 0
+
+			-- Deleted field ids that have custom deletion handlers
+			local deleted_chandlers = {}
 
 			for i,field in ipairs(meta.proto) do
 				local name = field.name
-				local is_deleted = deleted[name]
+				local is_deleted = deleted[name] ~= nil
 
 				if is_deleted then
 					nettable.debug("Proto field '", name,  "' is deleted!")
 					deleted_bitfield = bor(deleted_bitfield, lshift(1, i))
+
+					-- This field requires custom deletion handling
+					if field.handler.writeDeletion then
+						table.insert(deleted_chandlers, i)
+					end
 				end
 			end
 
 			nettableproto.typeHandlers.int.write(deleted_bitfield)
 
-			nettable.debug("Deleted bitfield: ", deleted_bitfield)
+			for _,i in ipairs(deleted_chandlers) do
+				local field = meta.proto[i]
+				local name = field.name
+
+				nettable.debug("Deleting proto field '", name,  "' using custom deletion writer")
+				field.handler.writeDeletion(deleted[name], field.data)
+			end
 		else
 			net.WriteBool(false)
 			net.WriteTable(modified)
@@ -557,19 +622,27 @@ if CLIENT then
 
 			nettable.debug("Proto mod table ", table.ToString(mod))
 
-			local deleted_bitfield = nettableproto.typeHandlers.int.read()
-			nettable.debug("Received proto del bitfield ", deleted_bitfield)
+			-- First read bitfield of deleted fields
+			local deletedFields = nettableproto.typeHandlers.int.read()
+			nettable.debug("Proto del bitfield ", deletedFields)
 
-			for i=1,32 do
-				local b = lshift(1, i)
-				if band(deleted_bitfield, b) == b then
-					nettable.debug("Field #", b, " has been deleted")
+			for i,field in ipairs(meta.proto) do
+				local _bit = lshift(1, i)
+				local is_deleted = band(deletedFields, _bit) == _bit
 
-					local field = meta.proto[i]
-					if field then del[field.name] = true end
+				-- If it is deleted, then we delegate to relevant deletion handler
+				if is_deleted then
+					if field.handler.readDeletion then
+						nettable.debug("Field '", field.name, "' has been deleted using custom deletion writer")
+
+						del[field.name] = field.handler.readDeletion(field.data)
+					else
+						nettable.debug("Field '", field.name, "' has been deleted")
+
+						del[field.name] = true
+					end
 				end
 			end
-
 		else
 			mod = net.ReadTable()
 			del = net.ReadTable()
