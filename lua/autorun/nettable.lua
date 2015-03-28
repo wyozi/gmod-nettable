@@ -7,6 +7,8 @@ local function curry_reverse(f)
 	return function (y) return function (x) return f(x,y) end end
 end
 
+local lshift, rshift, arshift, band, bor, bxor = bit.lshift, bit.rshift, bit.arshift, bit.band, bit.bor, bit.bxor
+
 local type_handlers = {
 	["u8"] = { read = curry(net.ReadUInt)(8), write = curry_reverse(net.WriteUInt)(8) },
 	["u16"] = { read = curry(net.ReadUInt)(16), write = curry_reverse(net.WriteUInt)(16) },
@@ -15,6 +17,40 @@ local type_handlers = {
 	["i8"] = { read = curry(net.ReadInt)(8), write = curry_reverse(net.WriteInt)(8) },
 	["i16"] = { read = curry(net.ReadInt)(16), write = curry_reverse(net.WriteInt)(16) },
 	["i32"] = { read = curry(net.ReadInt)(32), write = curry_reverse(net.WriteInt)(32) },
+
+	-- Variable Length Encoded integer
+	["int"] = {
+		read = function()
+			local ret = 0
+
+			local readBytes = 0
+			for i=0,5 do
+				readBytes = readBytes + 1
+
+				local b = net.ReadUInt(8)
+				ret = bor(ret, lshift(band(b, 0x7F), 7*i))
+				if band(b, 0x80) ~= 0x80 then
+					break
+				end
+			end
+
+			nettable.debug("[Type:VarInt] Read ", readBytes, " varint bytes")
+			return ret
+		end,
+		write = function(value)
+			local writtenBytes = 1
+
+			while rshift(value, 7) ~= 0 do
+				net.WriteUInt(bor(band(value, 0x7F), 0x80), 8)
+				value = rshift(value, 7)
+
+				writtenBytes = writtenBytes + 1
+			end
+			net.WriteUInt(band(value, 0x7F), 8)
+
+			nettable.debug("[Type:VarInt] Wrote ", writtenBytes, " varint bytes")
+		end,
+	},
 
 	["f32"] = { read = net.ReadFloat, write = net.WriteFloat },
 	["f64"] = { read = net.ReadDouble, write = net.WriteDouble },

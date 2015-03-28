@@ -75,12 +75,17 @@ Protocol string | NetTable structure
 
 Type  | Explanation
 ------------- | -------------
+int         | [VLE](https://en.wikipedia.org/wiki/Variable-length_quantity) integer (use this for arbitrary size integers)
 u8/u16/u32  | 8/16/32 bit unsigned integer
 i8/i16/i32  | 8/16/32 bit signed integer
-str         | A string
 f32         | A float
 f64         | A double
+bool        | A boolean
+str         | A string
 []          | An array
 {}          | A subtable
-ply         | A GMod Player
-ent         | A GMod Entity
+ply         | Garry's Mod: Player
+ent         | Garry's Mod: Entity
+vec         | Garry's Mod: Vector
+ang         | Garry's Mod: Angle
+color       | Garry's Mod: Color
