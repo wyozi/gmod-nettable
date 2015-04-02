@@ -581,9 +581,10 @@ if SERVER then
 			return
 		end
 
-		local modified, deleted = nettable.computeTableDelta({}, tbl)
-
 		nettable.debug("Sending full update to ", cl, " for '", id, "'")
+
+		-- We don't want to send uncommitted changes, so we use deep copy of the last sent table
+		local modified, deleted = (meta.lastSentTable or {}), {}
 
 		net.Start("nettable_commit")
 			nettable.id_hasher.write(id, meta)
