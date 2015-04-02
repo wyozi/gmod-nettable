@@ -335,6 +335,22 @@ nettable.id_hasher = {
 }
 ]]
 
+function nettable.resolveIdTblMeta(id)
+	local tbl, meta
+	if type(id) == "string" then
+		id = nettable.id_hasher.hash(id)
+
+		tbl = nettable.__tables[id]
+		meta = nettable.__tablemeta[tbl]
+	else
+		tbl = id
+		meta = nettable.__tablemeta[tbl]
+		id = meta.id
+	end
+
+	return id, tbl, meta
+end
+
 function nettable.get(id, opts)
 	local origId = id
 
@@ -393,6 +409,22 @@ function nettable.get(id, opts)
 	end
 
 	return tbl
+end
+
+function nettable.addChangeListener(id, listener)
+	local id, tbl, meta = nettable.resolveIdTblMeta(id)
+
+	if not meta then
+		return nettable.error("Table '" .. tostring(tbl) .. "' does not have tablemeta. Make sure committed tables are created using nettable.get()")
+	end
+
+	meta.changeListeners = meta.changeListeners or {}
+	table.insert(meta.changeListeners, listener)
+end
+
+function nettable.createChangeEvent(modified, deleted)
+	local event = {modified = modified, deleted = deleted}
+	return event
 end
 
 -- Inspiration from nutscript https://github.com/Chessnut/NutScript/blob/master/gamemode/sh_util.lua#L581
@@ -514,17 +546,7 @@ if SERVER then
 	end
 
 	function nettable.commit(id)
-		local tbl, meta
-		if type(id) == "string" then
-			id = nettable.id_hasher.hash(id)
-
-			tbl = nettable.__tables[id]
-			meta = nettable.__tablemeta[tbl]
-		else
-			tbl = id
-			meta = nettable.__tablemeta[tbl]
-			id = meta.id
-		end
+		local id, tbl, meta = nettable.resolveIdTblMeta(id)
 
 		if not meta then
 			return nettable.error("Table '" .. tostring(tbl) .. "' does not have tablemeta. Make sure committed tables are created using nettable.get()")
@@ -561,6 +583,13 @@ if SERVER then
 			net.Send(targets)
 		else
 			net.Broadcast()
+		end
+
+		if meta.changeListeners then
+			local changeEvent = nettable.createChangeEvent(modified, deleted)
+			for _,l in pairs(meta.changeListeners) do
+				l(changeEvent)
+			end
 		end
 
 		meta.lastSentTable = nettable.deepCopy(tbl)
@@ -673,6 +702,13 @@ if CLIENT then
 			end
 		end
 		ApplyDel(del, tbl)
+
+		if meta.changeListeners then
+			local changeEvent = nettable.createChangeEvent(mod, del)
+			for _,l in pairs(meta.changeListeners) do
+				l(changeEvent)
+			end
+		end
 
 		nettable.debug("Commit applied")
 	end)
