@@ -511,7 +511,7 @@ if SERVER then
 
 			local deleted_bitfield = 0
 
-			-- Deleted field ids that have custom deletion handlers
+			-- Deleted fields that have custom deletion handlers
 			local deleted_chandlers = {}
 
 			for i,field in ipairs(meta.proto) do
@@ -524,19 +524,22 @@ if SERVER then
 
 					-- This field requires custom deletion handling
 					if field.handler.writeDeletion then
-						table.insert(deleted_chandlers, i)
+						table.insert(deleted_chandlers, field)
 					end
 				end
 			end
 
 			nettableproto.typeHandlers.int.write(deleted_bitfield)
 
-			for _,i in ipairs(deleted_chandlers) do
-				local field = meta.proto[i]
+			for _,field in ipairs(deleted_chandlers) do
 				local name = field.name
+				local fully_deleted = deleted[name] == true
 
-				nettable.debug("Deleting proto field '", name,  "' using custom deletion writer")
-				field.handler.writeDeletion(deleted[name], field.data)
+				net.WriteBool(fully_deleted)
+				if not fully_deleted then
+					nettable.debug("Deleting proto field '", name,  "' using custom deletion writer")
+					field.handler.writeDeletion(deleted[name], field.data)
+				end
 			end
 		else
 			net.WriteBool(false)
@@ -662,11 +665,18 @@ if CLIENT then
 
 				-- If it is deleted, then we delegate to relevant deletion handler
 				if is_deleted then
-					if field.handler.readDeletion then
-						nettable.debug("Field '", field.name, "' has been deleted using custom deletion writer")
+					local fully_deleted = true
 
-						del[field.name] = field.handler.readDeletion(field.data)
-					else
+					if field.handler.readDeletion then
+						fully_deleted = net.ReadBool()
+
+						if not fully_deleted then
+							nettable.debug("Field '", field.name, "' has been deleted using custom deletion writer")
+							del[field.name] = field.handler.readDeletion(field.data)
+						end
+					end
+					
+					if fully_deleted then
 						nettable.debug("Field '", field.name, "' has been deleted")
 
 						del[field.name] = true
