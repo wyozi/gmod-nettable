@@ -351,6 +351,11 @@ function nettable.resolveIdTblMeta(id)
 	return id, tbl, meta
 end
 
+function nettable.exists(id)
+	id = nettable.id_hasher.hash(id)
+	return nettable.__tables[id] ~= nil
+end
+
 function nettable.get(id, opts)
 	local origId = id
 
@@ -363,6 +368,9 @@ function nettable.get(id, opts)
 	-- Create table if doesn't exist
 	local tbl = nettable.__tables[id]
 	if not tbl then
+		-- Don't create if not wanted
+		if opts and opts.dontCreate then return nil end
+
 		tbl = {}
 		nettable.__tables[id] = tbl
 
