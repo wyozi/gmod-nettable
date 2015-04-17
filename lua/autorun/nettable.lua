@@ -374,6 +374,30 @@ function nettable.get(id, opts)
 		tbl = {}
 		nettable.__tables[id] = tbl
 
+		-- Auto commit functionality
+		if SERVER and opts and opts.autoCommit then
+			local commitDelay = opts.commitDelay or 0.1
+			local function commit()
+				if commitDelay <= 0 then
+					nettable.commit(id)
+				else
+					timer.Create("NetTable.AutoCommit." .. id, commitDelay, 0, function()
+						nettable.commit(id)
+					end)
+				end
+			end
+
+			local innerTbl = {}
+			tbl._values = innerTbl
+			setmetatable(tbl, {
+				__index = function(t, key) return innerTbl[key] end,
+				__newindex = function(t, key, val)
+					innerTbl[key] = val
+					commit()
+				end
+			})
+		end
+
 		tbl_existed = false
 	end
 
