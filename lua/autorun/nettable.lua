@@ -453,6 +453,16 @@ function nettable.addChangeListener(id, listener)
 	meta.changeListeners = meta.changeListeners or {}
 	table.insert(meta.changeListeners, listener)
 end
+function nettable.setChangeListener(id, listenerId, listener)
+	local id, tbl, meta = nettable.resolveIdTblMeta(id)
+
+	if not meta then
+		return nettable.error("Table '" .. tostring(tbl) .. "' does not have tablemeta. Make sure committed tables are created using nettable.get()")
+	end
+
+	meta.changeListeners = meta.changeListeners or {}
+	meta.changeListeners[listenerId] = listener
+end
 
 function nettable.createChangeEvent(modified, deleted)
 	local event = {modified = modified, deleted = deleted}
