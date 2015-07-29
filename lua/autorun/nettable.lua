@@ -356,10 +356,44 @@ function nettable.exists(id)
 	return nettable.__tables[id] ~= nil
 end
 
+nettable.OPT_ALREADY_HASHED = 1 -- id is passed as already hashed and should not be re-hashed
+nettable.OPT_DONT_CREATE = 2 -- don't create table if it does not exist
+nettable.OPT_AUTOCOMMIT = 4 -- if changes to table should be automatically commited using __newindex hook
+
+-- You can pass both a table of options or a bitmap to nettable.get, so we need a
+-- function to parse that
+local function hasOpt(opts, opt)
+	if not opts then return false end
+
+	local _type = type(opts)
+	if _type == "number" then
+		return bit.band(opts, opt) == opt
+	end
+
+	if _type == "table" then
+		-- "idHashed" is obsolete but supported table option
+		if opt == nettable.OPT_ALREADY_HASHED and (opts.idHashed or opts.idAlreadyHashed) then
+			return true
+		end
+
+		if opt == nettable.OPT_DONT_CREATE and opts.dontCreate then
+			return true
+		end
+
+		if opt == nettable.OPT_AUTOCOMMIT and opts.autoCommit then
+			return true
+		end
+	end
+
+	return false
+end
+
 function nettable.get(id, opts)
+	local isOptsTable = type(opts) == "table"
+
 	local origId = id
 
-	if not opts or not opts.idHashed then
+	if hasOpt(opts, nettable.OPT_ALREADY_HASHED) then
 		id = nettable.id_hasher.hash(id)
 	end
 
@@ -369,14 +403,14 @@ function nettable.get(id, opts)
 	local tbl = nettable.__tables[id]
 	if not tbl then
 		-- Don't create if not wanted
-		if opts and opts.dontCreate then return nil end
+		if hasOpt(opts, nettable.OPT_DONT_CREATE) then return nil end
 
 		tbl = {}
 		nettable.__tables[id] = tbl
 
 		-- Auto commit functionality
-		if SERVER and opts and opts.autoCommit then
-			local commitDelay = opts.commitDelay or 0.1
+		if SERVER and hasOpt(opts, nettable.OPT_AUTOCOMMIT) then
+			local commitDelay = isOptsTable and opts.commitDelay or 0.1
 			local function commit()
 				if commitDelay <= 0 then
 					nettable.commit(id)
@@ -416,11 +450,11 @@ function nettable.get(id, opts)
 	meta.id = id
 	meta.origId = origId
 
-	if opts and opts.filter then
+	if isOptsTable and opts.filter then
 		meta.filter = opts.filter
 	end
 
-	if opts and opts.proto then
+	if isOptsTable and opts.proto then
 		local compiled = nettableproto.compile(opts.proto)
 		meta.proto = compiled
 	end
@@ -717,7 +751,7 @@ if CLIENT then
 							del[field.name] = field.handler.readDeletion(field.data)
 						end
 					end
-					
+
 					if fully_deleted then
 						nettable.debug("Field '", field.name, "' has been deleted")
 
